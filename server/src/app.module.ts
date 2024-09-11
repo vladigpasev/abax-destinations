@@ -3,11 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
-import { GroupsModule } from './groups/groups.module';
+import { EmailModule } from './email/email.module';
 import { User } from './users/user.entity';
-import { Group } from './groups/group.entity';
-import { APP_GUARD } from '@nestjs/core';
-import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -17,18 +14,19 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      entities: [User, Group],
-      synchronize: process.env.NODE_ENV !== 'production', // Disable synchronize in production
+      entities: [User],
+      synchronize: process.env.NODE_ENV !== 'production',
     }),
     AuthModule,
     UsersModule,
-    GroupsModule,
+    EmailModule,
   ],
   providers: [
-    {
-      provide: APP_GUARD,
-      useClass: JwtAuthGuard,
-    },
+    // Remove the global guard here
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: JwtAuthGuard,
+    // },
   ],
 })
 export class AppModule {}

@@ -18,8 +18,11 @@ export class UsersService {
     return this.usersRepository.findOneBy({ id });
   }
 
-  // Метод за създаване приема User ентити
   async create(user: User): Promise<User> {
     return this.usersRepository.save(user);
+  }
+
+  async update(id: number, user: User): Promise<User> {
+    return this.usersRepository.save({ ...user, id });
   }
 }
