@@ -16,45 +16,53 @@ export class AuthService {
     private emailService: EmailService,
   ) {}
 
+  // Validate user credentials and ensure email is confirmed
   async validateUser(email: string, pass: string): Promise<User | null> {
-    this.logger.log(`Validating user with email: ${email}`); // Log email being validated
+    this.logger.log(`Validating user with email: ${email}`);
 
     const user = await this.usersService.findByEmail(email);
     if (!user) {
-      this.logger.warn(`User with email ${email} not found`); // Log if user not found
+      this.logger.warn(`User with email ${email} not found`);
       return null;
     }
 
     const isPasswordValid = await bcrypt.compare(pass, user.password);
-    this.logger.log(`Password comparison result for user ${email}: ${isPasswordValid}`); // Log password comparison result
+    this.logger.log(`Password comparison result for user ${email}: ${isPasswordValid}`);
 
     if (!isPasswordValid) {
       return null;
     }
 
     if (!user.emailConfirmed) {
-      this.logger.warn(`User ${email} has not confirmed their email`); // Log if email is not confirmed
+      this.logger.warn(`User ${email} has not confirmed their email`);
       throw new HttpException('Email not confirmed', HttpStatus.FORBIDDEN);
     }
 
-    this.logger.log(`User ${email} validated successfully`); // Log successful validation
+    this.logger.log(`User ${email} validated successfully`);
     return user;
   }
 
+  // Login method: generates JWT token for the user
   async login(user: User) {
-    this.logger.log(`Logging in user with email: ${user.email}`); // Log login attempt
+    this.logger.log(`Logging in user with email: ${user.email}`);
 
     const payload = { sub: user.id, role: user.role };
-    const token = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload);
+    const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
 
-    this.logger.log(`JWT generated for user ${user.email}`); // Log JWT generation
+    this.logger.log(`JWT and refresh token generated for user ${user.email}`);
+
+    // Include role in response to help with client-side RBAC
     return {
-      access_token: token,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      role: user.role, // Return the user role for RBAC in the client
     };
   }
 
+  // Register method: creates a new user and sends an email confirmation
   async register(createUserDto: CreateUserDto, currentUser: User): Promise<User> {
-    this.logger.log(`Registering new user with email: ${createUserDto.email}`); // Log registration attempt
+    this.logger.log(`Registering new user with email: ${createUserDto.email}`);
 
     let allowedRoles: string[] = [];
     if (currentUser.role === 'admin') {
@@ -78,7 +86,7 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    this.logger.log(`Password for new user ${createUserDto.email} has been hashed`); // Log password hashing
+    this.logger.log(`Password for new user ${createUserDto.email} has been hashed`);
 
     const newUser = new User();
     newUser.email = createUserDto.email;
@@ -90,31 +98,52 @@ export class AuthService {
 
     const token = this.jwtService.sign({ email: user.email }, { expiresIn: '1d' });
     await this.emailService.sendEmailConfirmation(user.email, token);
-    this.logger.log(`Confirmation email sent to ${user.email}`); // Log email confirmation sending
+    this.logger.log(`Confirmation email sent to ${user.email}`);
 
     return user;
   }
 
+  // Confirm email logic
   async confirmEmail(token: string) {
     try {
       const payload = this.jwtService.verify(token);
-      this.logger.log(`Confirming email for user with email: ${payload.email}`); // Log email confirmation
+      this.logger.log(`Confirming email for user with email: ${payload.email}`);
 
       const user = await this.usersService.findByEmail(payload.email);
 
       if (!user) {
-        this.logger.warn(`User with email ${payload.email} not found during email confirmation`); // Log if user not found
+        this.logger.warn(`User with email ${payload.email} not found during email confirmation`);
         throw new HttpException('User not found', HttpStatus.NOT_FOUND);
       }
 
       user.emailConfirmed = true;
       await this.usersService.update(user.id, user);
-      this.logger.log(`Email confirmed successfully for user ${user.email}`); // Log email confirmation success
+      this.logger.log(`Email confirmed successfully for user ${user.email}`);
 
       return { message: 'Email confirmed successfully.' };
     } catch (error) {
-      this.logger.error(`Invalid or expired token during email confirmation: ${error.message}`); // Log token issue
+      this.logger.error(`Invalid or expired token during email confirmation: ${error.message}`);
       throw new HttpException('Invalid or expired token', HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  // Refresh token logic
+  async refreshToken(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken);
+      this.logger.log(`Refreshing token for user with email: ${payload.email}`);
+      
+      const user = await this.usersService.findById(payload.sub);
+      if (!user) {
+        throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+      }
+
+      const newAccessToken = this.jwtService.sign({ sub: user.id, role: user.role });
+      return {
+        access_token: newAccessToken,
+      };
+    } catch (error) {
+      throw new HttpException('Invalid or expired refresh token', HttpStatus.UNAUTHORIZED);
     }
   }
 }

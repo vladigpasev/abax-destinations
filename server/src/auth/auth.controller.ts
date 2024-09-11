@@ -6,28 +6,26 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { Roles } from './roles.decorator';
+import { RateLimit } from 'nestjs-rate-limiter';
 
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
+  
+  @RateLimit({ points: 5, duration: 60 })
   @Post('login')
-@ApiOperation({ summary: 'Login a user' })
-@ApiResponse({ status: 200, description: 'User successfully logged in.' })
-@ApiResponse({ status: 401, description: 'Invalid credentials.' })
-@ApiBody({ type: LoginDto })
-async login(@Body() loginDto: LoginDto) {
-  console.log('Login controller reached'); // Add this log to see if the controller is hit
-  const user = await this.authService.validateUser(loginDto.email, loginDto.password);
-  if (!user) {
-    console.log('Invalid credentials'); // Log when credentials are invalid
-    throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
+  @ApiOperation({ summary: 'Login a user' })
+  @ApiResponse({ status: 200, description: 'User successfully logged in.' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials.' })
+  @ApiBody({ type: LoginDto })
+  async login(@Body() loginDto: LoginDto) {
+    const user = await this.authService.validateUser(loginDto.email, loginDto.password);
+    if (!user) {
+      throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
+    }
+    return this.authService.login(user);
   }
-  console.log('Valid credentials'); // Log when credentials are valid
-  return this.authService.login(user);
-}
-
 
   @Post('register')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -47,5 +45,13 @@ async login(@Body() loginDto: LoginDto) {
   @ApiResponse({ status: 400, description: 'Invalid or expired token.' })
   async confirmEmail(@Query('token') token: string) {
     return this.authService.confirmEmail(token);
+  }
+
+  @Post('refresh-token')
+  @ApiOperation({ summary: 'Refresh access token' })
+  @ApiResponse({ status: 200, description: 'Access token refreshed.' })
+  @ApiResponse({ status: 401, description: 'Invalid refresh token.' })
+  async refreshToken(@Body('refresh_token') refreshToken: string) {
+    return this.authService.refreshToken(refreshToken);
   }
 }

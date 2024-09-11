@@ -20,6 +20,8 @@ export class EmailService {
       to,
       subject,
       html,
+    }).catch(err => {
+      throw new Error('Failed to send email: ' + err.message);
     });
   }
 

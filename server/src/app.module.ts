@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { EmailModule } from './email/email.module';
 import { User } from './users/user.entity';
+import { RateLimiterModule } from 'nestjs-rate-limiter';
 
 @Module({
   imports: [
@@ -20,13 +21,8 @@ import { User } from './users/user.entity';
     AuthModule,
     UsersModule,
     EmailModule,
+    RateLimiterModule,  // Register the rate limiter without forRoot()
   ],
-  providers: [
-    // Remove the global guard here
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: JwtAuthGuard,
-    // },
-  ],
+  providers: [],
 })
 export class AppModule {}

@@ -4,10 +4,8 @@ import { ROLES_KEY } from './roles.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Injectable()
-export class RolesGuard extends JwtAuthGuard implements CanActivate {
-  constructor(private reflector: Reflector) {
-    super();
-  }
+export class RolesGuard implements CanActivate {
+  constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
     const requiredRoles = this.reflector.get<string[]>(ROLES_KEY, context.getHandler());
