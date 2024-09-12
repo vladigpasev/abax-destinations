@@ -5,16 +5,20 @@ import { UsersService } from '../users/users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { EmailService } from '../email/email.service';
 import { User } from '../users/user.entity';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name); // Initialize Logger
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
     private emailService: EmailService,
   ) {}
+  private generateRandomToken(): string {
+    return randomBytes(32).toString('hex'); // 32 bytes = 64 characters hex string
+  }
 
   // Validate user credentials and ensure email is confirmed and account is approved
   async validateUser(email: string, pass: string): Promise<User | null> {
@@ -49,13 +53,17 @@ export class AuthService {
     return user;
   }
 
-  // Login method: generates JWT token for the user
+  // Login method: generates JWT and refresh token for the user
   async login(user: User) {
     this.logger.log(`Logging in user with email: ${user.email}`);
 
     const payload = { sub: user.id, role: user.role };
-    const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+
+    const refreshToken = this.generateRandomToken();  // Generate random refresh token
+
+    // Save refresh token securely in the database
+    await this.usersService.update(user.id, { refreshToken });
 
     this.logger.log(`JWT and refresh token generated for user ${user.email}`);
 
@@ -65,6 +73,7 @@ export class AuthService {
       role: user.role, // Return the user role for RBAC in the client
     };
   }
+
 
   // Register method: creates a new user and sends an email confirmation
   async register(
@@ -107,73 +116,8 @@ export class AuthService {
       newUser.approved = false; // Roles like 'guide', 'office', and 'admin' need approval
     }
 
-    if (!currentUser) {
-      if (role === 'admin') {
-        this.logger.warn(
-          `Unauthorized attempt to register user with role: ${role}`,
-        );
-        throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
-      }
-      const user = await this.usersService.create(newUser);
-      const token = this.jwtService.sign(
-        { email: user.email },
-        { expiresIn: '1d' },
-      );
-      await this.emailService.sendEmailConfirmation(user.email, token);
-      this.logger.log(`Confirmation email sent to ${user.email}`);
-      return user;
-    }
-
-    // If an authenticated user is creating a new user, ensure they have the right permissions
-    if (currentUser.role === 'admin') {
-      const user = await this.usersService.create(newUser);
-      const token = this.jwtService.sign(
-        { email: user.email },
-        { expiresIn: '1d' },
-      );
-      await this.emailService.sendEmailConfirmation(user.email, token);
-      this.logger.log(`Admin created user with role: ${role}`);
-      return user;
-    } else if (currentUser.role === 'office' && role === 'guide') {
-      const user = await this.usersService.create(newUser);
-      const token = this.jwtService.sign(
-        { email: user.email },
-        { expiresIn: '1d' },
-      );
-      await this.emailService.sendEmailConfirmation(user.email, token);
-      this.logger.log(`Office created guide`);
-      return user;
-    } else {
-      this.logger.warn(
-        `User ${currentUser.email} is not allowed to create new users with role: ${role}`,
-      );
-      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
-    }
-  }
-
-  private async createPrivilegedUser(
-    createUserDto: CreateUserDto,
-  ): Promise<User> {
-    const existingUser = await this.usersService.findByEmail(
-      createUserDto.email,
-    );
-    if (existingUser) {
-      this.logger.warn(`User with email ${createUserDto.email} already exists`);
-      throw new HttpException(
-        'User with this email already exists',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const newUser = new User();
-    newUser.email = createUserDto.email;
-    newUser.password = hashedPassword;
-    newUser.role = createUserDto.role;
-    newUser.emailConfirmed = false;
-
+    // Save new user and send email confirmation
     const user = await this.usersService.create(newUser);
-
     const token = this.jwtService.sign(
       { email: user.email },
       { expiresIn: '1d' },
@@ -183,6 +127,52 @@ export class AuthService {
 
     return user;
   }
+
+  // Refresh token logic with token rotation
+  async refreshToken(refreshToken: string) {
+    try {
+      // Lookup the user by the refresh token
+      const user = await this.usersService.findByRefreshToken(refreshToken);
+
+      if (!user) {
+        this.logger.warn(`Invalid refresh token`);
+        throw new HttpException('Invalid refresh token', HttpStatus.UNAUTHORIZED);
+      }
+
+      this.logger.log(`Refreshing token for user with ID: ${user.id}`);
+
+      // Generate new access token
+      const payload = { sub: user.id, role: user.role };
+      const newAccessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+
+      // Generate a new refresh token (rotate the refresh token)
+      const newRefreshToken = this.generateRandomToken();
+
+      // Update the user's refresh token in the database
+      await this.usersService.update(user.id, { refreshToken: newRefreshToken });
+
+      this.logger.log(`Tokens refreshed for user with ID: ${user.id}`);
+
+      return {
+        access_token: newAccessToken,
+        refresh_token: newRefreshToken,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to refresh token: ${error.message}`);
+      throw new HttpException('Invalid or expired refresh token', HttpStatus.UNAUTHORIZED);
+    }
+  }
+
+  // Logout: Invalidate refresh token
+  async logout(userId: number): Promise<void> {
+    this.logger.log(`Logging out user with ID: ${userId}`);
+
+    // Invalidate the refresh token by removing it from the database
+    await this.usersService.update(userId, { refreshToken: null });
+
+    this.logger.log(`Refresh token invalidated for user with ID: ${userId}`);
+  }
+
 
   // Confirm email logic
   async confirmEmail(token: string) {
@@ -208,36 +198,7 @@ export class AuthService {
       this.logger.error(
         `Invalid or expired token during email confirmation: ${error.message}`,
       );
-      throw new HttpException(
-        'Invalid or expired token',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  // Refresh token logic
-  async refreshToken(refreshToken: string) {
-    try {
-      const payload = this.jwtService.verify(refreshToken);
-      this.logger.log(`Refreshing token for user with email: ${payload.email}`);
-
-      const user = await this.usersService.findById(payload.sub);
-      if (!user) {
-        throw new HttpException('User not found', HttpStatus.NOT_FOUND);
-      }
-
-      const newAccessToken = this.jwtService.sign({
-        sub: user.id,
-        role: user.role,
-      });
-      return {
-        access_token: newAccessToken,
-      };
-    } catch (error) {
-      throw new HttpException(
-        'Invalid or expired refresh token',
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw new HttpException('Invalid or expired token', HttpStatus.BAD_REQUEST);
     }
   }
 
@@ -254,10 +215,7 @@ export class AuthService {
       this.logger.warn(
         `User with email ${email} has already confirmed their email`,
       );
-      throw new HttpException(
-        'Email already confirmed',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException('Email already confirmed', HttpStatus.BAD_REQUEST);
     }
 
     const token = this.jwtService.sign(
@@ -299,10 +257,7 @@ export class AuthService {
       user.resetPasswordToken !== token ||
       user.resetPasswordTokenExpiry < new Date()
     ) {
-      throw new HttpException(
-        'Invalid or expired token',
-        HttpStatus.BAD_REQUEST,
-      );
+      throw new HttpException('Invalid or expired token', HttpStatus.BAD_REQUEST);
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);

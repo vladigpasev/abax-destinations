@@ -16,7 +16,7 @@ export class User {
   email: string;
 
   @Column()
-  @Exclude()
+  @Exclude()  // Exclude password when serializing
   password: string;
 
   @Column()
@@ -33,6 +33,10 @@ export class User {
 
   @Column({ default: true })
   approved: boolean;
+
+  @Column({ nullable: true })
+  @Exclude()  // Exclude refresh token from responses
+  refreshToken?: string;  // Store refresh token securely
 
   @CreateDateColumn()
   createdAt: Date;

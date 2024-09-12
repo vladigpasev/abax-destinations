@@ -22,9 +22,16 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
-  async update(id: number, user: User): Promise<User> {
-    return this.usersRepository.save({ ...user, id });
+  async findByRefreshToken(refreshToken: string): Promise<User | undefined> {
+    return this.usersRepository.findOne({ where: { refreshToken } });
   }
+  
+
+  async update(id: number, updateUserDto: Partial<User>): Promise<User> {
+    await this.usersRepository.update(id, updateUserDto);
+    return this.findById(id);
+  }
+
 
   async findByResetPasswordToken(token: string): Promise<User | undefined> {
     return this.usersRepository.findOne({
