@@ -88,48 +88,84 @@ export class UsersService {
     currentUser: User,
   ): Promise<User> {
     const existingUser = await this.findById(id);
-
+  
     if (!existingUser) {
       throw new Error('User not found');
     }
-
-    // Admin може да актуализира всички потребители и полета, включително полето `approved`
-    if (currentUser.role === 'admin') {
-      return this.update(id, { ...existingUser, ...updateUserDto });
+  
+    // 1. Remove restricted fields
+    const restrictedFields = ['email', 'password', 'resetPasswordToken', 'resetPasswordTokenExpiry', 'emailConfirmed'];
+    this.removeRestrictedFields(updateUserDto, restrictedFields);
+  
+    // 2. Prevent role change for own account
+    if (this.isAttemptingToChangeOwnRole(currentUser, id, updateUserDto)) {
+      throw new Error('You are not allowed to change your own role');
     }
-
-    // Office може да актуализира гайдове, туристи и своите собствени профили
-    if (currentUser.role === 'office') {
-      if (
-        existingUser.role === 'guide' ||
-        existingUser.role === 'tourist' ||
-        existingUser.id === currentUser.id
-      ) {
-        // Office може да обновява само своите собствени потребителски данни или полето `approved` за гайдове
-        if (
-          existingUser.role === 'guide' &&
-          updateUserDto.approved !== undefined
-        ) {
-          existingUser.approved = updateUserDto.approved;
-        }
-        return this.update(id, { ...existingUser, ...updateUserDto });
-      } else {
-        throw new Error('Not allowed to update this user');
-      }
+  
+    // 3. Role change handling
+    if (updateUserDto.role) {
+      this.handleRoleChange(currentUser, existingUser, updateUserDto);
     }
-
-    // Guide и tourist могат да актуализират само собствените си профили
-    if (
-      (currentUser.role === 'guide' || currentUser.role === 'tourist') &&
-      existingUser.id === currentUser.id
-    ) {
-      return this.update(id, { ...existingUser, ...updateUserDto });
+  
+    // 4. Guide and tourist profile update (self-update only)
+    if (this.isSelfUpdating(currentUser, existingUser)) {
+      await this.usersRepository.update(id, updateUserDto);
+      return this.findById(id);
     }
-
-    // В случай че потребителят няма право да актуализира този профил
+  
+    // 5. Admin and office update logic
+    if (this.isAdminOrOffice(currentUser)) {
+      await this.usersRepository.update(id, updateUserDto);
+      return this.findById(id);
+    }
+  
+    // 6. No permission to update
     throw new Error('Not allowed to update this user');
   }
+  
+  // Helper methods for cleaner logic
+  
+  private removeRestrictedFields(updateUserDto: Partial<User>, restrictedFields: string[]): void {
+    restrictedFields.forEach(field => {
+      if (updateUserDto[field] !== undefined) {
+        console.log(`Field ${field} is restricted and will be ignored.`);
+        delete updateUserDto[field];
+      }
+    });
+  }
+  
+  private isAttemptingToChangeOwnRole(currentUser: User, id: number, updateUserDto: Partial<User>): boolean {
+    return currentUser.id === id && updateUserDto.role && updateUserDto.role !== currentUser.role;
+  }
+  
+  private handleRoleChange(currentUser: User, existingUser: User, updateUserDto: Partial<User>): void {
+    if (currentUser.role === 'admin' && currentUser.id !== existingUser.id) {
+      console.log('Admin is changing role.');
+    } else if (currentUser.role === 'office') {
+      if (
+        ['tourist', 'guide'].includes(existingUser.role) &&
+        ['tourist', 'guide'].includes(updateUserDto.role)
+      ) {
+        console.log('Office is changing role between tourist and guide.');
+      } else {
+        throw new Error('Office can only change roles between tourist and guide');
+      }
+    } else {
+      throw new Error('You are not allowed to change roles');
+    }
+  }
+  
+  private isSelfUpdating(currentUser: User, existingUser: User): boolean {
+    return ['guide', 'tourist'].includes(currentUser.role) && currentUser.id === existingUser.id;
+  }
+  
+  private isAdminOrOffice(currentUser: User): boolean {
+    return ['admin', 'office'].includes(currentUser.role);
+  }
+  
+  
 
+  
   async getUsersByFiltersAndSorting(
     currentUser: User,
     role?: string,

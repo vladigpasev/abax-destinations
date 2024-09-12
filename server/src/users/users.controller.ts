@@ -97,28 +97,28 @@ export class UsersController {
     throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'office', 'guide', 'tourist')
   @Patch(':id')
-  @ApiOperation({ summary: 'Update user by ID' })
-  @ApiResponse({ status: 200, description: 'User updated successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden' })
-  @ApiBody({ type: UpdateUserDto })
-  @ApiBearerAuth()
-  async updateUser(
-    @Param('id') id: number,
-    @Body() updateUserDto: UpdateUserDto,
-    @Req() req,
-  ) {
-    try {
-      // Обновяване на потребителя, като се спазват правата на логнатия потребител
-      return await this.usersService.updateUserByRoleAndAccess(
-        id,
-        updateUserDto,
-        req.user,
-      );
-    } catch (error) {
-      throw new HttpException(error.message, HttpStatus.FORBIDDEN);
-    }
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin', 'office', 'guide', 'tourist')
+@ApiOperation({ summary: 'Update user by ID (Patch request)' })
+@ApiResponse({ status: 200, description: 'User updated successfully' })
+@ApiResponse({ status: 403, description: 'Forbidden' })
+@ApiBody({ type: UpdateUserDto })
+@ApiBearerAuth()
+async updateUser(
+  @Param('id') id: number,
+  @Body() updateUserDto: UpdateUserDto,
+  @Req() req,
+) {
+  try {
+    return await this.usersService.updateUserByRoleAndAccess(
+      id,
+      updateUserDto,
+      req.user,
+    );
+  } catch (error) {
+    throw new HttpException(error.message, HttpStatus.FORBIDDEN);
   }
+}
+
 }

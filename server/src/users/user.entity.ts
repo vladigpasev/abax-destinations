@@ -3,6 +3,7 @@ import {
   Column,
   PrimaryGeneratedColumn,
   CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
 
@@ -24,18 +25,18 @@ export class User {
   @Column({ default: false })
   emailConfirmed: boolean;
 
-  // Поле за съхранение на токен за смяна на парола
   @Column({ nullable: true })
   resetPasswordToken?: string;
 
-  // Поле за съхранение на времето на изтичане на токена за смяна на парола
   @Column({ type: 'timestamp', nullable: true })
   resetPasswordTokenExpiry?: Date;
 
-  // Add approval status for users with roles that require admin or office approval
-  @Column({ default: true }) // Default to true for roles that don't require approval
+  @Column({ default: true })
   approved: boolean;
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;  // Track last updates
 }
