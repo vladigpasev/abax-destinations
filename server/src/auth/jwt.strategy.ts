@@ -18,9 +18,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       throw new UnauthorizedException();
     }
+
     if (!user.emailConfirmed) {
       throw new UnauthorizedException('Email not confirmed');
     }
+
+    if (!user.approved) {
+      throw new UnauthorizedException('Account not approved'); // Deny access if the account is not approved
+    }
+
     return user;
   }
 }

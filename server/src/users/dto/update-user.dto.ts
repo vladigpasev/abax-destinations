@@ -1,35 +1,38 @@
 import {
+  IsOptional,
   IsEmail,
-  IsNotEmpty,
   IsString,
   IsIn,
   MinLength,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class CreateUserDto {
+export class UpdateUserDto {
   @ApiProperty({
     description: 'Email of the user',
+    required: false,
     example: 'user@example.com',
   })
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
   @ApiProperty({
     description: 'Password of the user',
-    example: 'password123',
-    minLength: 8,
+    required: false,
+    example: 'newpassword123',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @MinLength(8, { message: 'Password must be at least 8 characters long' })
-  password: string;
+  password?: string;
 
   @ApiProperty({
     description: 'Role of the user',
-    enum: ['admin', 'office', 'guide', 'tourist'],
     required: false,
+    enum: ['admin', 'office', 'guide', 'tourist'],
   })
+  @IsOptional()
   @IsString()
-  @IsIn(['admin', 'office', 'guide', 'tourist'], { message: 'Invalid role' })
+  @IsIn(['admin', 'office', 'guide', 'tourist'])
   role?: string;
 }

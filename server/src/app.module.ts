@@ -21,7 +21,7 @@ import { RateLimiterModule } from 'nestjs-rate-limiter';
     AuthModule,
     UsersModule,
     EmailModule,
-    RateLimiterModule,  // Register the rate limiter without forRoot()
+    RateLimiterModule, // Register the rate limiter without forRoot()
   ],
   providers: [],
 })

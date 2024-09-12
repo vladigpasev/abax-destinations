@@ -25,4 +25,152 @@ export class UsersService {
   async update(id: number, user: User): Promise<User> {
     return this.usersRepository.save({ ...user, id });
   }
+
+  async findByResetPasswordToken(token: string): Promise<User | undefined> {
+    return this.usersRepository.findOne({
+      where: { resetPasswordToken: token },
+    });
+  }
+
+  async getAllUsersByRole(role: string): Promise<User[]> {
+    return this.usersRepository.find({ where: { role } });
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return this.usersRepository.find();
+  }
+
+  async getUsersByRoleAndAccess(
+    role: string,
+    currentUser: User,
+  ): Promise<User[]> {
+    const queryBuilder = this.usersRepository.createQueryBuilder('user');
+
+    // Admin can access all users
+    if (currentUser.role === 'admin') {
+      return queryBuilder.getMany();
+    }
+
+    // Office can access guide and tourist roles, and their own user
+    if (currentUser.role === 'office') {
+      return queryBuilder
+        .where(
+          'user.role = :guide OR user.role = :tourist OR user.id = :userId',
+          {
+            guide: 'guide',
+            tourist: 'tourist',
+            userId: currentUser.id,
+          },
+        )
+        .getMany();
+    }
+
+    // Guide can only access their own user
+    if (currentUser.role === 'guide') {
+      return queryBuilder
+        .where('user.id = :userId', { userId: currentUser.id })
+        .getMany();
+    }
+
+    // Tourist can only access their own user
+    if (currentUser.role === 'tourist') {
+      return queryBuilder
+        .where('user.id = :userId', { userId: currentUser.id })
+        .getMany();
+    }
+
+    return [];
+  }
+
+  async updateUserByRoleAndAccess(
+    id: number,
+    updateUserDto: Partial<User>,
+    currentUser: User,
+  ): Promise<User> {
+    const existingUser = await this.findById(id);
+
+    if (!existingUser) {
+      throw new Error('User not found');
+    }
+
+    // Admin може да актуализира всички потребители и полета, включително полето `approved`
+    if (currentUser.role === 'admin') {
+      return this.update(id, { ...existingUser, ...updateUserDto });
+    }
+
+    // Office може да актуализира гайдове, туристи и своите собствени профили
+    if (currentUser.role === 'office') {
+      if (
+        existingUser.role === 'guide' ||
+        existingUser.role === 'tourist' ||
+        existingUser.id === currentUser.id
+      ) {
+        // Office може да обновява само своите собствени потребителски данни или полето `approved` за гайдове
+        if (
+          existingUser.role === 'guide' &&
+          updateUserDto.approved !== undefined
+        ) {
+          existingUser.approved = updateUserDto.approved;
+        }
+        return this.update(id, { ...existingUser, ...updateUserDto });
+      } else {
+        throw new Error('Not allowed to update this user');
+      }
+    }
+
+    // Guide и tourist могат да актуализират само собствените си профили
+    if (
+      (currentUser.role === 'guide' || currentUser.role === 'tourist') &&
+      existingUser.id === currentUser.id
+    ) {
+      return this.update(id, { ...existingUser, ...updateUserDto });
+    }
+
+    // В случай че потребителят няма право да актуализира този профил
+    throw new Error('Not allowed to update this user');
+  }
+
+  async getUsersByFiltersAndSorting(
+    currentUser: User,
+    role?: string,
+    sortByEmail?: 'asc' | 'desc',
+    sortByCreatedAt?: 'asc' | 'desc',
+  ): Promise<User[]> {
+    const queryBuilder = this.usersRepository.createQueryBuilder('user');
+
+    // Admin can access all users
+    if (currentUser.role === 'admin') {
+      queryBuilder.where('1 = 1');
+    } else if (currentUser.role === 'office') {
+      queryBuilder.where('user.role IN (:...roles) OR user.id = :userId', {
+        roles: ['guide', 'tourist'],
+        userId: currentUser.id,
+      });
+    } else {
+      queryBuilder.where('user.id = :userId', { userId: currentUser.id });
+    }
+
+    // Apply role filter
+    if (role) {
+      queryBuilder.andWhere('user.role = :role', { role });
+    }
+
+    // Apply sorting by email
+    if (sortByEmail) {
+      queryBuilder.addOrderBy(
+        'user.email',
+        sortByEmail === 'asc' ? 'ASC' : 'DESC',
+      );
+    }
+
+    // Apply sorting by creation date
+    if (sortByCreatedAt) {
+      queryBuilder.addOrderBy(
+        'user.createdAt',
+        sortByCreatedAt === 'asc' ? 'ASC' : 'DESC',
+      );
+    }
+
+    return queryBuilder.getMany();
+  }
 }

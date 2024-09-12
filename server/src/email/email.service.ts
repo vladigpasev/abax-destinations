@@ -7,7 +7,7 @@ export class EmailService {
 
   constructor() {
     this.transporter = nodemailer.createTransport({
-      service: 'gmail',
+      service: 'gmail', // Change this if you're using another service like SendGrid, SES, etc.
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD,
@@ -20,15 +20,22 @@ export class EmailService {
       to,
       subject,
       html,
-    }).catch(err => {
-      throw new Error('Failed to send email: ' + err.message);
     });
   }
 
   async sendEmailConfirmation(email: string, token: string) {
-    const url = `${process.env.APP_URL}/auth/confirm-email?token=${token}`;
-    const html = `Please click <a href="${url}">here</a> to confirm your email.`;
+    const appUrl = process.env.APP_URL || 'http://localhost:3000'; // Fallback if APP_URL is not set
+    const url = `${appUrl}/auth/confirm-email?token=${token}`;
+    const html = `Please click <a href="${url}">here</a> to confirm your email. ${url}`;
 
     await this.sendEmail(email, 'Email Confirmation', html);
+  }
+
+  async sendPasswordReset(email: string, token: string) {
+    const appUrl = process.env.APP_URL || 'http://localhost:3000'; // Fallback to localhost if APP_URL is not set
+    const url = `${appUrl}/auth/reset-password?token=${token}`;
+    const html = `Please click <a href="${url}">here</a> to reset your password. This link will expire in 1 hour.`;
+
+    await this.sendEmail(email, 'Password Reset', html);
   }
 }
