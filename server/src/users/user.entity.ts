@@ -4,13 +4,18 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  BeforeInsert,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
+import { v4 as uuidv4 } from 'uuid';
 
 @Entity()
 export class User {
   @PrimaryGeneratedColumn()
-  id: number;
+  id: number; // Keep auto-increment id (no longer used for operations)
+
+  @Column({ unique: true })
+  uuid: string; // Use UUID for operations instead of id
 
   @Column({ unique: true })
   email: string;
@@ -46,4 +51,9 @@ export class User {
 
   @Column({ default: 0 })
   refreshTokenVersion: number; // Track token version
+
+  @BeforeInsert()
+  generateUuid() {
+    this.uuid = uuidv4(); // Automatically generate UUID when a new user is created
+  }
 }

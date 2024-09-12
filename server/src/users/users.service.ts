@@ -14,8 +14,8 @@ export class UsersService {
     return this.usersRepository.findOneBy({ email });
   }
 
-  async findById(id: number): Promise<User> {
-    return this.usersRepository.findOneBy({ id });
+  async findByUuid(uuid: string): Promise<User> {
+    return this.usersRepository.findOneBy({ uuid });
   }
 
   async create(user: User): Promise<User> {
@@ -26,9 +26,9 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { refreshToken } });
   }
 
-  async update(id: number, updateUserDto: Partial<User>): Promise<User> {
-    await this.usersRepository.update(id, updateUserDto);
-    return this.findById(id);
+  async update(uuid: string, updateUserDto: Partial<User>): Promise<User> {
+    await this.usersRepository.update({ uuid }, updateUserDto);
+    return this.findByUuid(uuid);
   }
 
   async findByResetPasswordToken(token: string): Promise<User | undefined> {
@@ -60,11 +60,11 @@ export class UsersService {
     if (currentUser.role === 'office') {
       return queryBuilder
         .where(
-          'user.role = :guide OR user.role = :tourist OR user.id = :userId',
+          'user.role = :guide OR user.role = :tourist OR user.uuid = :userUuid',
           {
             guide: 'guide',
             tourist: 'tourist',
-            userId: currentUser.id,
+            userUuid: currentUser.uuid,
           },
         )
         .getMany();
@@ -73,14 +73,14 @@ export class UsersService {
     // Guide can only access their own user
     if (currentUser.role === 'guide') {
       return queryBuilder
-        .where('user.id = :userId', { userId: currentUser.id })
+        .where('user.uuid = :userUuid', { userUuid: currentUser.uuid })
         .getMany();
     }
 
     // Tourist can only access their own user
     if (currentUser.role === 'tourist') {
       return queryBuilder
-        .where('user.id = :userId', { userId: currentUser.id })
+        .where('user.uuid = :userUuid', { userUuid: currentUser.uuid })
         .getMany();
     }
 
@@ -88,11 +88,11 @@ export class UsersService {
   }
 
   async updateUserByRoleAndAccess(
-    id: number,
+    uuid: string,
     updateUserDto: Partial<User>,
     currentUser: User,
   ): Promise<User> {
-    const existingUser = await this.findById(id);
+    const existingUser = await this.findByUuid(uuid);
 
     if (!existingUser) {
       throw new Error('User not found');
@@ -109,7 +109,7 @@ export class UsersService {
     this.removeRestrictedFields(updateUserDto, restrictedFields);
 
     // 2. Prevent role change for own account
-    if (this.isAttemptingToChangeOwnRole(currentUser, id, updateUserDto)) {
+    if (this.isAttemptingToChangeOwnRole(currentUser, uuid, updateUserDto)) {
       throw new Error('You are not allowed to change your own role');
     }
 
@@ -120,14 +120,14 @@ export class UsersService {
 
     // 4. Guide and tourist profile update (self-update only)
     if (this.isSelfUpdating(currentUser, existingUser)) {
-      await this.usersRepository.update(id, updateUserDto);
-      return this.findById(id);
+      await this.usersRepository.update({ uuid }, updateUserDto);
+      return this.findByUuid(uuid);
     }
 
     // 5. Admin and office update logic
     if (this.isAdminOrOffice(currentUser)) {
-      await this.usersRepository.update(id, updateUserDto);
-      return this.findById(id);
+      await this.usersRepository.update({ uuid }, updateUserDto);
+      return this.findByUuid(uuid);
     }
 
     // 6. No permission to update
@@ -150,11 +150,11 @@ export class UsersService {
 
   private isAttemptingToChangeOwnRole(
     currentUser: User,
-    id: number,
+    uuid: string,
     updateUserDto: Partial<User>,
   ): boolean {
     return (
-      currentUser.id === id &&
+      currentUser.uuid === uuid &&
       updateUserDto.role &&
       updateUserDto.role !== currentUser.role
     );
@@ -165,7 +165,10 @@ export class UsersService {
     existingUser: User,
     updateUserDto: Partial<User>,
   ): void {
-    if (currentUser.role === 'admin' && currentUser.id !== existingUser.id) {
+    if (
+      currentUser.role === 'admin' &&
+      currentUser.uuid !== existingUser.uuid
+    ) {
       console.log('Admin is changing role.');
     } else if (currentUser.role === 'office') {
       if (
@@ -186,7 +189,7 @@ export class UsersService {
   private isSelfUpdating(currentUser: User, existingUser: User): boolean {
     return (
       ['guide', 'tourist'].includes(currentUser.role) &&
-      currentUser.id === existingUser.id
+      currentUser.uuid === existingUser.uuid
     );
   }
 
@@ -210,11 +213,13 @@ export class UsersService {
         new Brackets((qb) => {
           qb.where('user.role IN (:...roles)', {
             roles: ['guide', 'tourist'],
-          }).orWhere('user.id = :userId', { userId: currentUser.id });
+          }).orWhere('user.uuid = :userUuid', { userUuid: currentUser.uuid });
         }),
       );
     } else {
-      queryBuilder.where('user.id = :userId', { userId: currentUser.id });
+      queryBuilder.where('user.uuid = :userUuid', {
+        userUuid: currentUser.uuid,
+      });
     }
 
     // Apply role filter

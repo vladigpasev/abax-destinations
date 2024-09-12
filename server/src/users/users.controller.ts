@@ -72,13 +72,13 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'office', 'guide', 'tourist')
-  @Get(':id')
-  @ApiOperation({ summary: 'Get user by ID' })
+  @Get(':uuid') // Replaced id with uuid
+  @ApiOperation({ summary: 'Get user by UUID' })
   @ApiResponse({ status: 200, description: 'User retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiBearerAuth()
-  async getUserById(@Param('id') id: number, @Req() req) {
-    const user = await this.usersService.findById(id);
+  async getUserById(@Param('uuid') uuid: string, @Req() req) {
+    const user = await this.usersService.findByUuid(uuid);
     if (!user) {
       throw new HttpException('User not found', HttpStatus.NOT_FOUND);
     }
@@ -88,8 +88,8 @@ export class UsersController {
       (req.user.role === 'office' &&
         (user.role === 'guide' ||
           user.role === 'tourist' ||
-          user.id === req.user.id)) ||
-      req.user.id === user.id
+          user.uuid === req.user.uuid)) ||
+      req.user.uuid === user.uuid
     ) {
       return user;
     }
@@ -97,22 +97,22 @@ export class UsersController {
     throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
   }
 
-  @Patch(':id')
+  @Patch(':uuid') // Replaced id with uuid
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'office', 'guide', 'tourist')
-  @ApiOperation({ summary: 'Update user by ID (Patch request)' })
+  @ApiOperation({ summary: 'Update user by UUID (Patch request)' })
   @ApiResponse({ status: 200, description: 'User updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiBody({ type: UpdateUserDto })
   @ApiBearerAuth()
   async updateUser(
-    @Param('id') id: number,
+    @Param('uuid') uuid: string,
     @Body() updateUserDto: UpdateUserDto,
     @Req() req,
   ) {
     try {
       return await this.usersService.updateUserByRoleAndAccess(
-        id,
+        uuid,
         updateUserDto,
         req.user,
       );

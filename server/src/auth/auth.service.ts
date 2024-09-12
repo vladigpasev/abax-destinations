@@ -106,14 +106,14 @@ export class AuthService {
   }
 
   async login(user: User) {
-    const payload = { sub: user.id, role: user.role, type: 'access' };
+    const payload = { sub: user.uuid, role: user.role, type: 'access' };
     const accessToken = this.jwtService.sign(payload, {
       expiresIn: '15m',
       secret: this.configService.get<string>('JWT_SECRET'),
     });
 
     const refreshTokenPayload = {
-      sub: user.id,
+      sub: user.uuid,
       type: 'refresh',
       version: user.refreshTokenVersion, // Include the token version
     };
@@ -125,7 +125,6 @@ export class AuthService {
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
-      //role: user.role,
     };
   }
 
@@ -140,7 +139,7 @@ export class AuthService {
         throw new HttpException('Invalid token type', HttpStatus.UNAUTHORIZED);
       }
 
-      const user = await this.usersService.findById(payload.sub);
+      const user = await this.usersService.findByUuid(payload.sub);
       if (!user || user.refreshTokenVersion !== payload.version) {
         this.logger.warn(`Invalid refresh token version`);
         throw new HttpException(
@@ -149,11 +148,11 @@ export class AuthService {
         );
       }
 
-      this.logger.log(`Refreshing token for user with ID: ${user.id}`);
+      this.logger.log(`Refreshing token for user with UUID: ${user.uuid}`);
 
       // Generate new access and refresh tokens
       const newAccessToken = this.jwtService.sign(
-        { sub: user.id, role: user.role },
+        { sub: user.uuid, role: user.role },
         {
           expiresIn: '15m',
           secret: this.configService.get<string>('JWT_SECRET'),
@@ -161,7 +160,7 @@ export class AuthService {
       );
 
       const newRefreshTokenPayload = {
-        sub: user.id,
+        sub: user.uuid,
         type: 'refresh',
         version: user.refreshTokenVersion, // Include the latest version
       };
@@ -183,22 +182,22 @@ export class AuthService {
     }
   }
 
-  async logout(userId: number): Promise<void> {
-    this.logger.log(`Logging out user with ID: ${userId}`);
+  async logout(userUuid: string): Promise<void> {
+    this.logger.log(`Logging out user with UUID: ${userUuid}`);
 
-    const user = await this.usersService.findById(userId);
+    const user = await this.usersService.findByUuid(userUuid);
     if (!user) {
       throw new HttpException('User not found', HttpStatus.NOT_FOUND);
     }
 
     // Clear refreshToken and increment the version to invalidate all existing tokens
-    await this.usersService.update(userId, {
+    await this.usersService.update(user.uuid, {
       refreshToken: null, // Optional, but good practice for security
       refreshTokenVersion: user.refreshTokenVersion + 1,
     });
 
     this.logger.log(
-      `User with ID: ${userId} has been logged out and tokens invalidated.`,
+      `User with UUID: ${user.uuid} has been logged out and tokens invalidated.`,
     );
   }
 
@@ -217,7 +216,7 @@ export class AuthService {
       }
 
       user.emailConfirmed = true;
-      await this.usersService.update(user.id, user);
+      await this.usersService.update(user.uuid, user);
       this.logger.log(`Email confirmed successfully for user ${user.email}`);
 
       return { message: 'Email confirmed successfully.' };
@@ -274,7 +273,7 @@ export class AuthService {
 
     user.resetPasswordToken = resetToken;
     user.resetPasswordTokenExpiry = new Date(Date.now() + 3600 * 1000); // 1 hour ahead
-    await this.usersService.update(user.id, user);
+    await this.usersService.update(user.uuid, user);
 
     await this.emailService.sendPasswordReset(user.email, resetToken);
 
@@ -302,7 +301,7 @@ export class AuthService {
     user.resetPasswordToken = null;
     user.resetPasswordTokenExpiry = null;
 
-    await this.usersService.update(user.id, user);
+    await this.usersService.update(user.uuid, user);
 
     this.logger.log(`Password reset successfully for user ${user.email}`);
   }

@@ -121,8 +121,8 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User logged out successfully.' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async logout(@Req() req) {
-    const userId = req.user.id; // `req.user` contains user data after JWT validation
-    await this.authService.logout(userId);
+    const userUuid = req.user.uuid; // `req.user` contains user data after JWT validation
+    await this.authService.logout(userUuid);
     return { message: 'User logged out successfully.' };
   }
 }
