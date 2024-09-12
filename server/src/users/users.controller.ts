@@ -98,27 +98,26 @@ export class UsersController {
   }
 
   @Patch(':id')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin', 'office', 'guide', 'tourist')
-@ApiOperation({ summary: 'Update user by ID (Patch request)' })
-@ApiResponse({ status: 200, description: 'User updated successfully' })
-@ApiResponse({ status: 403, description: 'Forbidden' })
-@ApiBody({ type: UpdateUserDto })
-@ApiBearerAuth()
-async updateUser(
-  @Param('id') id: number,
-  @Body() updateUserDto: UpdateUserDto,
-  @Req() req,
-) {
-  try {
-    return await this.usersService.updateUserByRoleAndAccess(
-      id,
-      updateUserDto,
-      req.user,
-    );
-  } catch (error) {
-    throw new HttpException(error.message, HttpStatus.FORBIDDEN);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'office', 'guide', 'tourist')
+  @ApiOperation({ summary: 'Update user by ID (Patch request)' })
+  @ApiResponse({ status: 200, description: 'User updated successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiBody({ type: UpdateUserDto })
+  @ApiBearerAuth()
+  async updateUser(
+    @Param('id') id: number,
+    @Body() updateUserDto: UpdateUserDto,
+    @Req() req,
+  ) {
+    try {
+      return await this.usersService.updateUserByRoleAndAccess(
+        id,
+        updateUserDto,
+        req.user,
+      );
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.FORBIDDEN);
+    }
   }
-}
-
 }

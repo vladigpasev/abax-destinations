@@ -17,7 +17,8 @@ export class UpdateUserDto {
   role?: string;
 
   @ApiPropertyOptional({
-    description: 'Indicates whether the user has confirmed their email (Admin only)',
+    description:
+      'Indicates whether the user has confirmed their email (Admin only)',
     example: true,
   })
   @IsOptional()
@@ -40,7 +41,8 @@ export class UpdateUserDto {
   resetPasswordToken?: string;
 
   @ApiPropertyOptional({
-    description: 'Timestamp for reset password token expiry (cannot be updated)',
+    description:
+      'Timestamp for reset password token expiry (cannot be updated)',
     example: '2024-09-12T09:50:45.000Z',
     readOnly: true,
   })

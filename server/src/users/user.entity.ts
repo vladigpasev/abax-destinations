@@ -16,7 +16,7 @@ export class User {
   email: string;
 
   @Column()
-  @Exclude()  // Exclude password when serializing
+  @Exclude() // Exclude password when serializing
   password: string;
 
   @Column()
@@ -35,12 +35,15 @@ export class User {
   approved: boolean;
 
   @Column({ nullable: true })
-  @Exclude()  // Exclude refresh token from responses
-  refreshToken?: string;  // Store refresh token securely
+  @Exclude() // Exclude refresh token from responses
+  refreshToken?: string; // Store refresh token securely
 
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;  // Track last updates
+  updatedAt: Date; // Track last updates
+
+  @Column({ default: 0 })
+  refreshTokenVersion: number; // Track token version
 }

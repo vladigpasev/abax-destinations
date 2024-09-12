@@ -6,6 +6,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { EmailService } from '../email/email.service';
 import { User } from '../users/user.entity';
 import { randomBytes } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -15,10 +16,8 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
-  private generateRandomToken(): string {
-    return randomBytes(32).toString('hex'); // 32 bytes = 64 characters hex string
-  }
 
   // Validate user credentials and ensure email is confirmed and account is approved
   async validateUser(email: string, pass: string): Promise<User | null> {
@@ -52,28 +51,6 @@ export class AuthService {
     this.logger.log(`User ${email} validated successfully`);
     return user;
   }
-
-  // Login method: generates JWT and refresh token for the user
-  async login(user: User) {
-    this.logger.log(`Logging in user with email: ${user.email}`);
-
-    const payload = { sub: user.id, role: user.role };
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
-
-    const refreshToken = this.generateRandomToken();  // Generate random refresh token
-
-    // Save refresh token securely in the database
-    await this.usersService.update(user.id, { refreshToken });
-
-    this.logger.log(`JWT and refresh token generated for user ${user.email}`);
-
-    return {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      role: user.role, // Return the user role for RBAC in the client
-    };
-  }
-
 
   // Register method: creates a new user and sends an email confirmation
   async register(
@@ -128,30 +105,70 @@ export class AuthService {
     return user;
   }
 
+  async login(user: User) {
+    const payload = { sub: user.id, role: user.role, type: 'access' };
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: '15m',
+      secret: this.configService.get<string>('JWT_SECRET'),
+    });
+
+    const refreshTokenPayload = {
+      sub: user.id,
+      type: 'refresh',
+      version: user.refreshTokenVersion, // Include the token version
+    };
+    const refreshToken = this.jwtService.sign(refreshTokenPayload, {
+      expiresIn: '7d',
+      secret: this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET'),
+    });
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      //role: user.role,
+    };
+  }
+
   // Refresh token logic with token rotation
   async refreshToken(refreshToken: string) {
     try {
-      // Lookup the user by the refresh token
-      const user = await this.usersService.findByRefreshToken(refreshToken);
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET'),
+      });
 
-      if (!user) {
-        this.logger.warn(`Invalid refresh token`);
-        throw new HttpException('Invalid refresh token', HttpStatus.UNAUTHORIZED);
+      if (payload.type !== 'refresh') {
+        throw new HttpException('Invalid token type', HttpStatus.UNAUTHORIZED);
+      }
+
+      const user = await this.usersService.findById(payload.sub);
+      if (!user || user.refreshTokenVersion !== payload.version) {
+        this.logger.warn(`Invalid refresh token version`);
+        throw new HttpException(
+          'Invalid refresh token',
+          HttpStatus.UNAUTHORIZED,
+        );
       }
 
       this.logger.log(`Refreshing token for user with ID: ${user.id}`);
 
-      // Generate new access token
-      const payload = { sub: user.id, role: user.role };
-      const newAccessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+      // Generate new access and refresh tokens
+      const newAccessToken = this.jwtService.sign(
+        { sub: user.id, role: user.role },
+        {
+          expiresIn: '15m',
+          secret: this.configService.get<string>('JWT_SECRET'),
+        },
+      );
 
-      // Generate a new refresh token (rotate the refresh token)
-      const newRefreshToken = this.generateRandomToken();
-
-      // Update the user's refresh token in the database
-      await this.usersService.update(user.id, { refreshToken: newRefreshToken });
-
-      this.logger.log(`Tokens refreshed for user with ID: ${user.id}`);
+      const newRefreshTokenPayload = {
+        sub: user.id,
+        type: 'refresh',
+        version: user.refreshTokenVersion, // Include the latest version
+      };
+      const newRefreshToken = this.jwtService.sign(newRefreshTokenPayload, {
+        expiresIn: '7d',
+        secret: this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET'),
+      });
 
       return {
         access_token: newAccessToken,
@@ -159,22 +176,32 @@ export class AuthService {
       };
     } catch (error) {
       this.logger.error(`Failed to refresh token: ${error.message}`);
-      throw new HttpException('Invalid or expired refresh token', HttpStatus.UNAUTHORIZED);
+      throw new HttpException(
+        'Invalid or expired refresh token',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
   }
 
-  // Logout: Invalidate refresh token
   async logout(userId: number): Promise<void> {
     this.logger.log(`Logging out user with ID: ${userId}`);
 
-    // Invalidate the refresh token by removing it from the database
-    await this.usersService.update(userId, { refreshToken: null });
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    }
 
-    this.logger.log(`Refresh token invalidated for user with ID: ${userId}`);
+    // Clear refreshToken and increment the version to invalidate all existing tokens
+    await this.usersService.update(userId, {
+      refreshToken: null, // Optional, but good practice for security
+      refreshTokenVersion: user.refreshTokenVersion + 1,
+    });
+
+    this.logger.log(
+      `User with ID: ${userId} has been logged out and tokens invalidated.`,
+    );
   }
 
-
-  // Confirm email logic
   async confirmEmail(token: string) {
     try {
       const payload = this.jwtService.verify(token);
@@ -198,7 +225,10 @@ export class AuthService {
       this.logger.error(
         `Invalid or expired token during email confirmation: ${error.message}`,
       );
-      throw new HttpException('Invalid or expired token', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Invalid or expired token',
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 
@@ -215,7 +245,10 @@ export class AuthService {
       this.logger.warn(
         `User with email ${email} has already confirmed their email`,
       );
-      throw new HttpException('Email already confirmed', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Email already confirmed',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     const token = this.jwtService.sign(
@@ -257,7 +290,10 @@ export class AuthService {
       user.resetPasswordToken !== token ||
       user.resetPasswordTokenExpiry < new Date()
     ) {
-      throw new HttpException('Invalid or expired token', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Invalid or expired token',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);

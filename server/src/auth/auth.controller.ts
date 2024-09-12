@@ -6,14 +6,24 @@ import {
   Query,
   HttpException,
   HttpStatus,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { RateLimit } from 'nestjs-rate-limiter';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -58,8 +68,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Access token refreshed.' })
   @ApiResponse({ status: 401, description: 'Invalid refresh token.' })
-  async refreshToken(@Body('refresh_token') refreshToken: string) {
-    return this.authService.refreshToken(refreshToken);
+  @ApiBody({ type: RefreshTokenDto })
+  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
+    return this.authService.refreshToken(refreshTokenDto.refresh_token);
   }
 
   @RateLimit({ points: 5, duration: 60 })
@@ -101,5 +112,17 @@ export class AuthController {
       resetPasswordDto.newPassword,
     );
     return { message: 'Password reset successfully.' };
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard) // Ensure the user is authenticated
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Log out the user' })
+  @ApiResponse({ status: 200, description: 'User logged out successfully.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async logout(@Req() req) {
+    const userId = req.user.id; // `req.user` contains user data after JWT validation
+    await this.authService.logout(userId);
+    return { message: 'User logged out successfully.' };
   }
 }

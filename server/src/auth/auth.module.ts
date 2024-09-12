@@ -15,8 +15,8 @@ import { AuthController } from './auth.controller';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '60m' },
+        secret: configService.get<string>('JWT_SECRET'), // За access токените
+        signOptions: { expiresIn: '15m' }, // 15 минути валидност за access токените
       }),
     }),
     UsersModule,
