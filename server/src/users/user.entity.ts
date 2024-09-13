@@ -12,17 +12,25 @@ import { v4 as uuidv4 } from 'uuid';
 @Entity()
 export class User {
   @PrimaryGeneratedColumn()
-  id: number; // Keep auto-increment id (no longer used for operations)
+  id: number;
 
   @Column({ unique: true })
-  uuid: string; // Use UUID for operations instead of id
+  uuid: string;
 
   @Column({ unique: true })
   email: string;
 
   @Column()
-  @Exclude() // Exclude password when serializing
   password: string;
+
+  @Column()
+  firstName: string; // New field for first name
+
+  @Column()
+  lastName: string; // New field for last name
+
+  @Column({ unique: true })
+  phone: string; // New field for phone number
 
   @Column()
   role: string;
@@ -40,20 +48,20 @@ export class User {
   approved: boolean;
 
   @Column({ nullable: true })
-  @Exclude() // Exclude refresh token from responses
-  refreshToken?: string; // Store refresh token securely
+  @Exclude()
+  refreshToken?: string;
 
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date; // Track last updates
+  updatedAt: Date;
 
   @Column({ default: 0 })
-  refreshTokenVersion: number; // Track token version
+  refreshTokenVersion: number;
 
   @BeforeInsert()
   generateUuid() {
-    this.uuid = uuidv4(); // Automatically generate UUID when a new user is created
+    this.uuid = uuidv4();
   }
 }

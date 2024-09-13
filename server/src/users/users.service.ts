@@ -14,6 +14,11 @@ export class UsersService {
     return this.usersRepository.findOneBy({ email });
   }
 
+  async findByPhone(phone: string): Promise<User> {
+    return this.usersRepository.findOneBy({ phone });
+  }
+  
+
   async findByUuid(uuid: string): Promise<User> {
     return this.usersRepository.findOneBy({ uuid });
   }

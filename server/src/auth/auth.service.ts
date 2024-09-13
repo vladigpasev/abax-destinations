@@ -53,57 +53,49 @@ export class AuthService {
   }
 
   // Register method: creates a new user and sends an email confirmation
-  async register(
-    createUserDto: CreateUserDto,
-    currentUser?: User,
-  ): Promise<User> {
-    this.logger.log(`Registering new user with email: ${createUserDto.email}`);
-
-    const role = createUserDto.role || 'tourist';
-
-    // Check if the user already exists by email
-    const existingUser = await this.usersService.findByEmail(
-      createUserDto.email,
-    );
+  async register(createUserDto: CreateUserDto): Promise<User> {
+    const { email, password, firstName, lastName, phone, role = 'tourist' } = createUserDto;
+  
+    this.logger.log(`Registering new user with email: ${email}`);
+  
+    // Check if the user already exists by email or phone
+    const existingUser = await this.usersService.findByEmail(email);
+    const existingUserByPhone = await this.usersService.findByPhone(phone);
     if (existingUser) {
-      this.logger.warn(`User with email ${createUserDto.email} already exists`);
-      throw new HttpException(
-        'User with this email already exists',
-        HttpStatus.BAD_REQUEST,
-      );
+      this.logger.warn(`User with email ${email} already exists`);
+      throw new HttpException('User with this email already exists', HttpStatus.BAD_REQUEST);
     }
-
+    if (existingUserByPhone) {
+      this.logger.warn(`User with phone number ${phone} already exists`);
+      throw new HttpException('User with this phone number already exists', HttpStatus.BAD_REQUEST);
+    }
+  
     // Hash the user's password
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    this.logger.log(
-      `Password for new user ${createUserDto.email} has been hashed`,
-    );
-
+    const hashedPassword = await bcrypt.hash(password, 10);
+  
     // Create a new user instance
     const newUser = new User();
-    newUser.email = createUserDto.email;
+    newUser.email = email;
     newUser.password = hashedPassword;
+    newUser.firstName = firstName;
+    newUser.lastName = lastName;
+    newUser.phone = phone;
     newUser.role = role;
     newUser.emailConfirmed = false;
-
+  
     // Auto-approve tourist role, other roles require approval
-    if (role === 'tourist') {
-      newUser.approved = true; // Automatically approve tourists
-    } else {
-      newUser.approved = false; // Roles like 'guide', 'office', and 'admin' need approval
-    }
-
+    newUser.approved = role === 'tourist';
+  
     // Save new user and send email confirmation
     const user = await this.usersService.create(newUser);
-    const token = this.jwtService.sign(
-      { email: user.email },
-      { expiresIn: '1d' },
-    );
+    const token = this.jwtService.sign({ email: user.email }, { expiresIn: '1d' });
     await this.emailService.sendEmailConfirmation(user.email, token);
+  
     this.logger.log(`Confirmation email sent to ${user.email}`);
-
+  
     return user;
   }
+  
 
   async login(user: User) {
     const payload = { sub: user.uuid, role: user.role, type: 'access' };
